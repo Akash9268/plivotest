@@ -256,6 +256,39 @@ class PubSubConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             await self.send_error(f"Ping error: {str(e)}", request_id)
 
+    @classmethod
+    async def notify_topic_deleted(cls, topic_name):
+        """Notify all subscribers that a topic has been deleted"""
+        try:
+            if topic_name in cls._topic_connections:
+                notification_data = {
+                    "type": "info",
+                    "topic": topic_name,
+                    "msg": "topic_deleted",
+                    "ts": timezone.now().isoformat()
+                }
+                
+                # Get all connections for this topic
+                connections = cls._topic_connections[topic_name].copy()
+                
+                # Send notification to all subscribers
+                for connection in connections:
+                    try:
+                        await connection.send(text_data=json.dumps(notification_data))
+                        print(f"Topic deletion notification sent to {connection.connection_id}")
+                    except Exception as e:
+                        print(f"Failed to send topic deletion notification to {connection.connection_id}: {e}")
+                        # Remove failed connection
+                        connections.discard(connection)
+                
+                # Remove the topic from connections (it's deleted)
+                del cls._topic_connections[topic_name]
+                
+                print(f"Topic deletion notifications sent to {len(connections)} subscribers")
+                
+        except Exception as e:
+            print(f"Error notifying topic deletion: {e}")
+
     async def send_error(self, error_message, request_id):
         """Send error response to client"""
         error_data = {

@@ -379,6 +379,17 @@
                             updateStats();
                             log(`✅ Message published successfully to topic: ${data.topic}`, 'info');
                             break;
+                        case 'info':
+                            // Handle info messages (like topic deletion)
+                            if (data.msg === 'topic_deleted') {
+                                log(`🗑️ Topic "${data.topic}" has been deleted!\n\nTimestamp: ${data.ts}`, 'warning');
+                                // Remove from published topics if we were using it
+                                publishedTopics.delete(data.topic);
+                                updateStats();
+                            } else {
+                                log(`ℹ️ Info: ${data.msg}`, 'info');
+                            }
+                            break;
                         case 'error':
                             log(`❌ Error: ${data.error}`, 'error');
                             break;

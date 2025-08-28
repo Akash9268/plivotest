@@ -311,6 +311,17 @@
                             // This is a real-time message from a topic
                             log(`📨 New message on topic "${data.topic}":\n\nMessage ID: ${data.message.id}\nPayload: ${JSON.stringify(data.message.payload, null, 2)}\nTimestamp: ${data.message.timestamp}\nPublisher: ${data.publisher_client_id || 'Unknown'}`, 'info');
                             break;
+                        case 'info':
+                            // Handle info messages (like topic deletion)
+                            if (data.msg === 'topic_deleted') {
+                                log(`🗑️ Topic "${data.topic}" has been deleted!\n\nTimestamp: ${data.ts}`, 'warning');
+                                // Remove from subscribed topics if we were subscribed
+                                subscribedTopics.delete(data.topic);
+                                updateSubscribedTopics();
+                            } else {
+                                log(`ℹ️ Info: ${data.msg}`, 'info');
+                            }
+                            break;
                         case 'error':
                             log(`❌ Error: ${data.error}`, 'error');
                             break;

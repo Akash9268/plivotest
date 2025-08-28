@@ -9,6 +9,8 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 import json
 import time
 
@@ -220,6 +222,31 @@ def delete_topic(request, topic_name):
             
             # Actually delete the topic from database
             topic.delete()
+            
+            # Send WebSocket notification to all subscribers
+            try:
+                from .consumers import PubSubConsumer
+                # Use asyncio to run the async notification method
+                import asyncio
+                import threading
+                
+                def send_notification():
+                    """Send notification in a new event loop"""
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(PubSubConsumer.notify_topic_deleted(topic_name))
+                    finally:
+                        loop.close()
+                
+                # Run notification in a separate thread
+                notification_thread = threading.Thread(target=send_notification)
+                notification_thread.start()
+                
+                print(f"Topic '{topic_name}' deleted. WebSocket notifications sent to subscribers.")
+                
+            except Exception as e:
+                print(f"Failed to send topic deletion notifications: {e}")
             
             # Prepare response in exact format specified
             response_data = {
