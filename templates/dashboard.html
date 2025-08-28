@@ -1,0 +1,374 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - Pub/Sub System{% endblock %}
+
+{% block content %}
+<!-- Dashboard Tab -->
+<div id="dashboard-content" class="tab-content">
+    <div class="card">
+        <h3><i class="fas fa-tachometer-alt"></i> System Overview</h3>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h4>Topics</h4>
+                <div class="value" id="topics-count">-</div>
+            </div>
+            <div class="stat-card">
+                <h4>Subscribers</h4>
+                <div class="value" id="subscribers-count">-</div>
+            </div>
+            <div class="stat-card">
+                <h4>Messages</h4>
+                <div class="value" id="messages-count">-</div>
+            </div>
+            <div class="stat-card">
+                <h4>Uptime</h4>
+                <div class="value" id="uptime">-</div>
+            </div>
+        </div>
+        <button class="btn" onclick="refreshDashboard()">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+
+    <div class="card">
+        <h3><i class="fas fa-list"></i> Recent Topics</h3>
+        <div id="topics-list" class="topics-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading topics...
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Topics Management Tab -->
+<div id="topics-content" class="tab-content hidden">
+    <div class="card">
+        <h3><i class="fas fa-list"></i> Manage Topics</h3>
+        <div id="manage-topics-list" class="topics-list">
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading topics...
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Topic Tab -->
+<div id="create-content" class="tab-content hidden">
+    <div class="card">
+        <h3><i class="fas fa-plus"></i> Create New Topic</h3>
+        <form id="create-topic-form">
+            <div class="form-group">
+                <label for="topic-name">Topic Name *</label>
+                <input type="text" id="topic-name" name="name" required placeholder="e.g., user_notifications">
+            </div>
+            <div class="form-group">
+                <label for="topic-description">Description</label>
+                <textarea id="topic-description" name="description" rows="3" placeholder="Optional description for the topic"></textarea>
+            </div>
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-plus"></i> Create Topic
+            </button>
+        </form>
+        <div id="create-result"></div>
+    </div>
+</div>
+
+<!-- Publisher Tab -->
+<div id="publisher-content" class="tab-content hidden">
+    <div class="card">
+        <h3><i class="fas fa-paper-plane"></i> Publisher View</h3>
+        <p>Use the dedicated publisher interface to publish messages to topics.</p>
+        <a href="/api/publisher/" class="btn btn-primary" target="_blank">
+            <i class="fas fa-external-link-alt"></i> Open Publisher View
+        </a>
+    </div>
+</div>
+
+<!-- Subscriber Tab -->
+<div id="subscriber-content" class="tab-content hidden">
+    <div class="card">
+        <h3><i class="fas fa-headphones"></i> Subscriber View</h3>
+        <p>Use the dedicated subscriber interface to receive real-time messages from topics.</p>
+        <a href="/api/subscriber/" class="btn btn-primary" target="_blank">
+            <i class="fas fa-external-link-alt"></i> Open Subscriber View
+        </a>
+    </div>
+</div>
+
+<!-- System Health Tab -->
+<div id="health-content" class="tab-content hidden">
+    <div class="card">
+        <h3><i class="fas fa-heartbeat"></i> System Health</h3>
+        <div id="health-status">
+            <div class="loading">
+                <div class="spinner"></div>
+                Checking system health...
+            </div>
+        </div>
+        <button class="btn" onclick="checkHealth()">
+            <i class="fas fa-sync-alt"></i> Check Health
+        </button>
+    </div>
+
+    <div class="card">
+        <h3><i class="fas fa-chart-bar"></i> System Statistics</h3>
+        <div id="system-stats">
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading statistics...
+            </div>
+        </div>
+        <button class="btn" onclick="loadStats()">
+            <i class="fas fa-sync-alt"></i> Refresh Stats
+        </button>
+    </div>
+</div>
+
+<script>
+// Global variables
+let topicsData = [];
+let healthData = {};
+let statsData = {};
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    refreshDashboard();
+    loadTopics();
+    checkHealth();
+    loadStats();
+});
+
+// Dashboard functions
+async function refreshDashboard() {
+    try {
+        await Promise.all([
+            loadHealth(),
+            loadTopics()
+        ]);
+        updateDashboard();
+    } catch (error) {
+        console.error('Error refreshing dashboard:', error);
+    }
+}
+
+async function loadHealth() {
+    try {
+        const response = await fetch('/api/health/');
+        healthData = await response.json();
+    } catch (error) {
+        console.error('Error loading health data:', error);
+    }
+}
+
+async function loadTopics() {
+    try {
+        const response = await fetch('/api/topics/');
+        topicsData = await response.json();
+    } catch (error) {
+        console.error('Error loading topics:', error);
+    }
+}
+
+function updateDashboard() {
+    // Update stats cards
+    document.getElementById('topics-count').textContent = healthData.topics || 0;
+    document.getElementById('subscribers-count').textContent = healthData.subscribers || 0;
+    document.getElementById('uptime').textContent = formatUptime(healthData.uptime_sec || 0);
+    
+    // Update topics list
+    updateTopicsList();
+}
+
+function updateTopicsList() {
+    const container = document.getElementById('topics-list');
+    const manageContainer = document.getElementById('manage-topics-list');
+    
+            if (topicsData.topics && topicsData.topics.length > 0) {
+            const topicsHtml = topicsData.topics.map(topic => `
+                <div class="topic-item">
+                    <div class="topic-info">
+                        <h4>${topic.name}</h4>
+                        <div class="topic-meta">
+                            <i class="fas fa-users"></i> ${topic.subscribers} subscribers
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            const manageHtml = topicsData.topics.map(topic => `
+                <div class="topic-item">
+                    <div class="topic-info">
+                        <h4>${topic.name}</h4>
+                        <div class="topic-meta">
+                            <i class="fas fa-users"></i> ${topic.subscribers} subscribers
+                        </div>
+                    </div>
+                    <div class="topic-actions">
+                        <button class="btn btn-danger" onclick="deleteTopic('${topic.name}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = topicsHtml;
+            manageContainer.innerHTML = manageHtml;
+        } else {
+            container.innerHTML = '<p>No topics found. Create your first topic!</p>';
+            manageContainer.innerHTML = '<p>No topics found. Create your first topic!</p>';
+        }
+}
+
+// Create topic functions
+document.getElementById('create-topic-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const topicData = {
+        name: formData.get('name'),
+        metadata: {
+            description: formData.get('description')
+        }
+    };
+    
+    try {
+        const response = await fetch('/api/topics/create/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(topicData)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showAlert('create-result', 'Topic created successfully!', 'success');
+            this.reset();
+            // Refresh data
+            refreshDashboard();
+        } else {
+            showAlert('create-result', `Error: ${result.error || 'Failed to create topic'}`, 'error');
+        }
+    } catch (error) {
+        showAlert('create-result', 'Error: Failed to create topic', 'error');
+        console.error('Error creating topic:', error);
+    }
+});
+
+// Health check functions
+async function checkHealth() {
+    const container = document.getElementById('health-status');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div>Checking system health...</div>';
+    
+    try {
+        const response = await fetch('/api/health/');
+        const data = await response.json();
+        
+        const healthHtml = `
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h4>Status</h4>
+                    <div class="value">${data.status || 'Unknown'}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Uptime</h4>
+                    <div class="value">${formatUptime(data.uptime_sec || 0)}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Topics</h4>
+                    <div class="value">${data.topics || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <h4>Subscribers</h4>
+                    <div class="value">${data.subscribers || 0}</div>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = healthHtml;
+    } catch (error) {
+        container.innerHTML = '<div class="alert alert-error">Error checking system health</div>';
+        console.error('Error checking health:', error);
+    }
+}
+
+async function loadStats() {
+    const container = document.getElementById('system-stats');
+    container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading statistics...</div>';
+    
+    try {
+        const response = await fetch('/api/stats/');
+        statsData = await response.json();
+        
+        if (statsData.topics && Object.keys(statsData.topics).length > 0) {
+            const statsHtml = Object.entries(statsData.topics).map(([name, data]) => `
+                <div class="topic-item">
+                    <div class="topic-info">
+                        <h4>${name}</h4>
+                        <div class="topic-meta">
+                            <i class="fas fa-envelope"></i> ${data.messages} messages
+                            <br>
+                            <i class="fas fa-users"></i> ${data.subscribers} subscribers
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = statsHtml;
+        } else {
+            container.innerHTML = '<p>No topics found.</p>';
+        }
+    } catch (error) {
+        container.innerHTML = '<div class="alert alert-error">Error loading statistics</div>';
+        console.error('Error loading stats:', error);
+    }
+}
+
+// Delete topic function
+async function deleteTopic(topicName) {
+    if (!confirm(`Are you sure you want to delete the topic "${topicName}"? This will also unsubscribe all subscribers.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/topics/${topicName}/delete/`, {
+            method: 'DELETE',
+        });
+        
+        if (response.ok) {
+            showAlert('manage-topics-list', `Topic "${topicName}" deleted successfully!`, 'success');
+            // Refresh data
+            refreshDashboard();
+        } else {
+            const result = await response.json();
+            showAlert('manage-topics-list', `Error: ${result.error || 'Failed to delete topic'}`, 'error');
+        }
+    } catch (error) {
+        showAlert('manage-topics-list', 'Error: Failed to delete topic', 'error');
+        console.error('Error deleting topic:', error);
+    }
+}
+
+// Utility functions
+function formatUptime(seconds) {
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
+}
+
+function showAlert(containerId, message, type) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+        container.innerHTML = '';
+    }, 5000);
+}
+</script>
+{% endblock %}

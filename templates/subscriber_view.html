@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pub/Sub Subscriber View</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .connected { background: rgba(76, 175, 80, 0.3); border: 1px solid #4caf50; }
+        .disconnected { background: rgba(244, 67, 54, 0.3); border: 1px solid #f44336; }
+        .connecting { background: rgba(255, 152, 0, 0.3); border: 1px solid #ff9800; }
+        
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            margin-bottom: 10px;
+        }
+        button {
+            background: #4caf50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .messages {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .message {
+            background: rgba(255, 255, 255, 0.1);
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #4caf50;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        .message-content {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .topic-tag {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            margin: 5px;
+            display: inline-block;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            flex: 1;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            color: #4caf50;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔌 Pub/Sub Subscriber View</h1>
+    
+    <!-- Connection Status -->
+    <div class="container">
+        <h2>Connection Status</h2>
+        <div id="connectionStatus" class="status disconnected">Disconnected</div>
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+        <div>
+            <strong>Connection ID:</strong> <span id="connectionId">-</span>
+        </div>
+    </div>
+    
+    <!-- Subscribe to Topics -->
+    <div class="container">
+        <h2>Subscribe to Topics</h2>
+        <div class="form-group">
+            <label for="clientId">Your Client ID:</label>
+            <input type="text" id="clientId" placeholder="e.g., subscriber1, mobile-app" value="subscriber-1">
+        </div>
+        <div class="form-group">
+            <label for="topicName">Topic to Subscribe:</label>
+            <input type="text" id="topicName" placeholder="e.g., orders, notifications" value="test-topic">
+        </div>
+        <button onclick="subscribe()" id="subscribeBtn" disabled>Subscribe</button>
+        <button onclick="unsubscribe()" id="unsubscribeBtn" disabled>Unsubscribe</button>
+        
+        <h3>Subscribed Topics:</h3>
+        <div id="subscribedTopics"></div>
+    </div>
+    
+    <!-- Statistics -->
+    <div class="container">
+        <h2>Statistics</h2>
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="messageCount">0</div>
+                <div>Messages Received</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="topicCount">0</div>
+                <div>Topics Subscribed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="connectionTime">0s</div>
+                <div>Connected Time</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Real-time Messages -->
+    <div class="container">
+        <h2>📨 Real-time Messages</h2>
+        <button onclick="clearMessages()">Clear Messages</button>
+        <div id="messages" class="messages">
+            <div style="text-align: center; opacity: 0.7; padding: 20px;">
+                No messages yet. Subscribe to topics to receive real-time updates!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+        let subscribedTopics = new Set();
+        let messageCounter = 0;
+        let connectionStartTime = null;
+        let connectionTimer = null;
+
+        function log(message, type = 'info') {
+            const messagesDiv = document.getElementById('messages');
+            
+            // Remove the "no messages" placeholder
+            if (messagesDiv.children.length === 1 && messagesDiv.children[0].textContent.includes('No messages yet')) {
+                messagesDiv.innerHTML = '';
+            }
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const header = document.createElement('div');
+            header.className = 'message-header';
+            header.innerHTML = `
+                <span>📨 New Message at ${timestamp}</span>
+                <span>#${++messageCounter}</span>
+            `;
+            
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            content.textContent = message;
+            
+            messageDiv.appendChild(header);
+            messageDiv.appendChild(content);
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Update message count
+            document.getElementById('messageCount').textContent = messageCounter;
+        }
+
+        function updateConnectionStatus(status, className) {
+            const statusDiv = document.getElementById('connectionStatus');
+            statusDiv.textContent = status;
+            statusDiv.className = `status ${className}`;
+        }
+
+        function updateButtons() {
+            const connectBtn = document.getElementById('connectBtn');
+            const disconnectBtn = document.getElementById('disconnectBtn');
+            const subscribeBtn = document.getElementById('subscribeBtn');
+            const unsubscribeBtn = document.getElementById('unsubscribeBtn');
+
+            connectBtn.disabled = isConnected;
+            disconnectBtn.disabled = !isConnected;
+            subscribeBtn.disabled = !isConnected;
+            unsubscribeBtn.disabled = !isConnected;
+        }
+
+        function updateSubscribedTopics() {
+            const topicsDiv = document.getElementById('subscribedTopics');
+            if (subscribedTopics.size === 0) {
+                topicsDiv.innerHTML = '<span class="topic-tag">None</span>';
+            } else {
+                topicsDiv.innerHTML = Array.from(subscribedTopics)
+                    .map(topic => `<span class="topic-tag">${topic}</span>`)
+                    .join('');
+            }
+            document.getElementById('topicCount').textContent = subscribedTopics.size;
+        }
+
+        function startConnectionTimer() {
+            connectionStartTime = Date.now();
+            connectionTimer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - connectionStartTime) / 1000);
+                document.getElementById('connectionTime').textContent = elapsed + 's';
+            }, 1000);
+        }
+
+        function stopConnectionTimer() {
+            if (connectionTimer) {
+                clearInterval(connectionTimer);
+                connectionTimer = null;
+            }
+            connectionStartTime = null;
+            document.getElementById('connectionTime').textContent = '0s';
+        }
+
+        function connect() {
+            if (ws) {
+                ws.close();
+            }
+
+            updateConnectionStatus('Connecting...', 'connecting');
+            log('Attempting to connect to WebSocket...', 'info');
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const wsUrl = `${protocol}//${host}/ws/`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = function(event) {
+                isConnected = true;
+                updateConnectionStatus('Connected', 'connected');
+                updateButtons();
+                startConnectionTimer();
+                log('WebSocket connected successfully!', 'info');
+            };
+
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    // Handle different message types
+                    switch(data.type) {
+                        case 'connected':
+                            document.getElementById('connectionId').textContent = data.connection_id;
+                            log(`Connection established with ID: ${data.connection_id}`, 'info');
+                            break;
+                        case 'subscribed':
+                            subscribedTopics.add(data.topic);
+                            updateSubscribedTopics();
+                            log(`Successfully subscribed to topic: ${data.topic}`, 'info');
+                            break;
+                        case 'unsubscribed':
+                            subscribedTopics.delete(data.topic);
+                            updateSubscribedTopics();
+                            log(`Successfully unsubscribed from topic: ${data.topic}`, 'info');
+                            break;
+                        case 'message':
+                            // This is a real-time message from a topic
+                            log(`📨 New message on topic "${data.topic}":\n\nMessage ID: ${data.message.id}\nPayload: ${JSON.stringify(data.message.payload, null, 2)}\nTimestamp: ${data.message.timestamp}\nPublisher: ${data.publisher_client_id || 'Unknown'}`, 'info');
+                            break;
+                        case 'error':
+                            log(`❌ Error: ${data.error}`, 'error');
+                            break;
+                        default:
+                            log(`Received: ${JSON.stringify(data, null, 2)}`, 'info');
+                    }
+                } catch (e) {
+                    log(`Failed to parse message: ${event.data}`, 'error');
+                }
+            };
+
+            ws.onclose = function(event) {
+                isConnected = false;
+                updateConnectionStatus('Disconnected', 'disconnected');
+                updateButtons();
+                subscribedTopics.clear();
+                updateSubscribedTopics();
+                document.getElementById('connectionId').textContent = '-';
+                stopConnectionTimer();
+                log(`WebSocket disconnected. Code: ${event.code}, Reason: ${event.reason}`, 'info');
+            };
+
+            ws.onerror = function(error) {
+                log(`WebSocket error: ${error}`, 'error');
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+            }
+        }
+
+        function sendMessage(message) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('WebSocket is not connected!', 'error');
+                return;
+            }
+
+            const requestId = generateUUID();
+            message.request_id = requestId;
+            
+            ws.send(JSON.stringify(message));
+        }
+
+        function subscribe() {
+            const topic = document.getElementById('topicName').value.trim();
+            const clientId = document.getElementById('clientId').value.trim();
+
+            if (!topic || !clientId) {
+                log('Topic name and Client ID are required!', 'error');
+                return;
+            }
+
+            sendMessage({
+                type: 'subscribe',
+                topic: topic,
+                client_id: clientId,
+                last_n: 0
+            });
+        }
+
+        function unsubscribe() {
+            const topic = document.getElementById('topicName').value.trim();
+            const clientId = document.getElementById('clientId').value.trim();
+
+            if (!topic || !clientId) {
+                log('Topic name and Client ID are required!', 'error');
+                return;
+            }
+
+            sendMessage({
+                type: 'unsubscribe',
+                topic: topic,
+                client_id: clientId
+            });
+        }
+
+        function clearMessages() {
+            document.getElementById('messages').innerHTML = `
+                <div style="text-align: center; opacity: 0.7; padding: 20px;">
+                    No messages yet. Subscribe to topics to receive real-time updates!
+                </div>
+            `;
+            messageCounter = 0;
+            document.getElementById('messageCount').textContent = '0';
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        // Initialize
+        updateButtons();
+        updateSubscribedTopics();
+        log('Subscriber view loaded. Click "Connect" to start receiving real-time messages!', 'info');
+    </script>
+</body>
+</html>

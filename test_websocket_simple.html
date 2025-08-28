@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple WebSocket Test</title>
+</head>
+<body>
+    <h1>Simple WebSocket Test</h1>
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+    <button onclick="ping()">Ping</button>
+    <div id="status">Disconnected</div>
+    <div id="logs"></div>
+
+    <script>
+        let ws = null;
+        
+        function log(message) {
+            const logs = document.getElementById('logs');
+            logs.innerHTML += '<div>' + new Date().toLocaleTimeString() + ': ' + message + '</div>';
+        }
+        
+        function connect() {
+            if (ws) {
+                ws.close();
+            }
+            
+            // Connect to WebSocket server on port 8000
+            const wsUrl = 'ws://localhost:8000/ws/';
+            log('Connecting to: ' + wsUrl);
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function(event) {
+                document.getElementById('status').textContent = 'Connected';
+                log('WebSocket connected successfully!');
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    log('Received: ' + JSON.stringify(data, null, 2));
+                } catch (e) {
+                    log('Failed to parse message: ' + event.data);
+                }
+            };
+            
+            ws.onclose = function(event) {
+                document.getElementById('status').textContent = 'Disconnected';
+                log('WebSocket disconnected. Code: ' + event.code + ', Reason: ' + event.reason);
+            };
+            
+            ws.onerror = function(error) {
+                log('WebSocket error: ' + JSON.stringify(error));
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+            }
+        }
+        
+        function ping() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                const pingMsg = {
+                    type: 'ping',
+                    request_id: 'test-' + Date.now()
+                };
+                ws.send(JSON.stringify(pingMsg));
+                log('Sent ping: ' + JSON.stringify(pingMsg));
+            } else {
+                log('WebSocket not connected!');
+            }
+        }
+    </script>
+</body>
+</html>
