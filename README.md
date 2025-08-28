@@ -10,6 +10,7 @@ A real-time, in-memory Pub/Sub system built with Django, Django Channels, and We
 - **📊 Live Statistics** - Real-time system monitoring
 - **🐳 Docker Support** - Easy deployment and development
 - **🌐 Web Dashboard** - User-friendly management interface
+- **🔴 Redis Support** - Scalable channel layer (though currently using in-memory)
 
 ## 🏗️ Architecture
 
@@ -32,26 +33,53 @@ A real-time, in-memory Pub/Sub system built with Django, Django Channels, and We
                     │ • Broadcasting  │
                     │ • Pub/Sub       │
                     └─────────────────┘
+                                 │
+                    ┌─────────────────┐
+                    │     Redis       │
+                    │   (Optional)    │
+                    │                 │
+                    │ • Channel Layer │
+                    │ • Scalability   │
+                    └─────────────────┘
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Docker
-- Docker Compose
+- **Docker** (version 20.10+)
+- **Docker Compose** (version 2.0+)
+
+**Verify Installation:**
+```bash
+docker --version
+docker-compose --version
+```
 
 ### 1. Clone and Setup
 
 ```bash
-git clone <your-repo>
+# Clone the repository
+git clone <your-repo-url>
 cd plivo-test
+
+# Verify files are present
+ls -la
 ```
+
+**Expected files:**
+- `docker-compose.yml`
+- `Dockerfile`
+- `requirements.txt`
+- `manage.py`
+- `pubsub_project/` directory
+- `pubsub/` directory
+- `templates/` directory
 
 ### 2. Start the System
 
 ```bash
-# Start all services
+# Start all services (automatically builds image if needed)
 docker-compose up -d
 
 # Check status
@@ -61,7 +89,26 @@ docker-compose ps
 docker-compose logs -f web
 ```
 
-### 3. Access the System
+**Note**: The first time you run `docker-compose up -d`, it will automatically build the Docker image. Subsequent runs will use the existing image, making startup much faster.
+
+**Expected output:**
+```
+[+] Running 2/2
+ ✔ Container plivo-test-redis-1  Started
+ ✔ Container plivo-test-web-1    Started
+```
+
+### 3. Verify System is Running
+
+```bash
+# Check if containers are running
+docker-compose ps
+
+# Check if web service is responding
+curl http://localhost:8000/api/health/
+```
+
+### 4. Access the System
 
 - **Main Dashboard**: http://localhost:8000/api/
 - **Publisher View**: http://localhost:8000/api/publisher/
@@ -276,11 +323,19 @@ const ws = new WebSocket('ws://localhost:8000/ws/');
 
 #### Test Multiple Subscribers
 ```bash
+# Make sure the system is running first
+docker-compose up -d
+
+# Run the test script
 python test_multiple_subscribers.py
 ```
 
 #### Demo Script (Opens Browser Windows)
 ```bash
+# Make sure the system is running first
+docker-compose up -d
+
+# Run the demo script
 python demo_pub_sub.py
 ```
 
@@ -301,6 +356,18 @@ curl http://localhost:8000/api/health/
 #### Get Stats
 ```bash
 curl http://localhost:8000/api/stats/
+```
+
+### WebSocket Testing
+
+#### Test WebSocket Connection
+```bash
+# Install websocat for command-line WebSocket testing
+# On macOS: brew install websocat
+# On Ubuntu: sudo apt install websocat
+
+# Test connection
+websocat ws://localhost:8000/ws/
 ```
 
 ## 🐳 Docker Commands
@@ -331,6 +398,9 @@ docker-compose ps
 # After making code changes
 docker-compose restart web
 
+# If you need to rebuild the image (after major changes)
+docker-compose up -d --build
+
 # View real-time logs
 docker-compose logs -f web
 
@@ -348,9 +418,12 @@ docker-compose exec web python manage.py createsuperuser
 docker-compose down --remove-orphans
 docker-compose up -d
 
-# Rebuild containers
+# Force rebuild image (after major changes or issues)
 docker-compose down
-docker-compose build --no-cache
+docker-compose up -d --build
+
+# Complete rebuild (removes all images and containers)
+docker-compose down --rmi all --volumes --remove-orphans
 docker-compose up -d
 
 # Check container resources
@@ -364,22 +437,27 @@ plivo-test/
 ├── docker-compose.yml          # Docker services configuration
 ├── Dockerfile                  # Web service container definition
 ├── requirements.txt            # Python dependencies
+├── manage.py                   # Django management script
 ├── pubsub_project/            # Django project settings
 │   ├── settings.py            # Django configuration
 │   ├── urls.py                # Main URL routing
+│   ├── wsgi.py                # WSGI configuration
 │   └── asgi.py                # ASGI configuration for WebSockets
 ├── pubsub/                    # Main application
 │   ├── models.py              # Database models
 │   ├── views.py               # HTTP API views
 │   ├── consumers.py           # WebSocket consumers
 │   ├── urls.py                # App URL routing
-│   └── routing.py             # WebSocket URL routing
+│   ├── routing.py             # WebSocket URL routing
+│   └── serializers.py         # Data serializers
 ├── templates/                  # HTML templates
 │   ├── base.html              # Base template
 │   ├── dashboard.html         # Main dashboard
 │   ├── websocket_test.html    # Publisher view
 │   └── subscriber_view.html   # Subscriber view
-└── test_*.py                  # Test scripts
+├── test_*.py                  # Test scripts
+├── demo_pub_sub.py            # Demo script
+└── db.sqlite3                 # SQLite database (auto-created)
 ```
 
 ## 🔧 Configuration
@@ -396,7 +474,30 @@ ALLOWED_HOSTS=your-domain.com
 
 ### Port Configuration
 - **HTTP/WebSocket**: 8000 (configurable in docker-compose.yml)
+- **Redis**: 6379 (optional, for production scaling)
 - **Database**: SQLite (in-memory for development)
+
+### Channel Layer Configuration
+Currently using in-memory channel layer for development:
+```python
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    }
+}
+```
+
+For production, consider Redis:
+```python
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('redis', 6379)],
+        },
+    },
+}
+```
 
 ## 🚨 Troubleshooting
 
@@ -406,16 +507,24 @@ ALLOWED_HOSTS=your-domain.com
 - Ensure the web service is running: `docker-compose ps`
 - Check logs: `docker-compose logs web`
 - Verify port 8000 is accessible
+- Check if Redis is running: `docker-compose logs redis`
 
 #### Topic Creation Fails
 - Check if CSRF exemption is working
 - Verify the web service was restarted after code changes
 - Check server logs for specific error messages
+- Ensure the database is accessible
 
 #### Messages Not Broadcasting
 - Ensure subscribers are connected to the same topic
 - Check WebSocket connection status
 - Verify the topic exists and is active
+- Check channel layer configuration
+
+#### Docker Issues
+- **Port already in use**: Change port in docker-compose.yml
+- **Permission denied**: Run with `sudo` or add user to docker group
+- **Image build fails**: Check Dockerfile and requirements.txt
 
 ### Debug Commands
 ```bash
@@ -430,7 +539,15 @@ docker-compose exec web bash
 
 # Check Django logs
 docker-compose exec web python manage.py shell
+
+# Check Redis
+docker-compose exec redis redis-cli ping
 ```
+
+### System Requirements
+- **Minimum**: 2GB RAM, 1 CPU
+- **Recommended**: 4GB RAM, 2 CPU
+- **Storage**: 1GB free space
 
 ## 📚 API Reference
 
@@ -460,6 +577,51 @@ docker-compose exec web python manage.py shell
 - `409` - Conflict
 - `500` - Internal Server Error
 
+### WebSocket Status Codes
+- `1000` - Normal closure
+- `1001` - Going away
+- `1002` - Protocol error
+- `1006` - Abnormal closure
+
+## 🔒 Security Considerations
+
+### Development vs Production
+- **Development**: CSRF exemptions for API endpoints
+- **Production**: Enable CSRF protection, use HTTPS
+- **Authentication**: Currently none, add for production
+- **Rate Limiting**: Consider implementing for production
+
+### Environment Variables
+```bash
+# Production settings
+DEBUG=False
+SECRET_KEY=your-very-secure-secret-key
+ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
+```
+
+## 🚀 Production Deployment
+
+### Recommended Setup
+1. **Use PostgreSQL** instead of SQLite
+2. **Enable Redis** for channel layers
+3. **Use Gunicorn** with Daphne
+4. **Set up Nginx** as reverse proxy
+5. **Enable HTTPS** with SSL certificates
+6. **Set up monitoring** and logging
+
+### Docker Production
+```bash
+# Build production image
+docker build -t pubsub-system:prod .
+
+# Run with production settings
+docker run -d \
+  -p 8000:8000 \
+  -e DEBUG=0 \
+  -e SECRET_KEY=your-secret \
+  pubsub-system:prod
+```
+
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -478,7 +640,14 @@ For issues and questions:
 1. Check the troubleshooting section
 2. Review server logs: `docker-compose logs web`
 3. Test with the provided curl examples
-4. Open an issue with detailed error information
+4. Check Docker status: `docker-compose ps`
+5. Open an issue with detailed error information
+
+### Getting Help
+- **Docker issues**: Check `docker-compose logs`
+- **WebSocket issues**: Check browser console and server logs
+- **API issues**: Test with curl examples
+- **Performance issues**: Check `docker stats`
 
 ---
 
